@@ -1,0 +1,9 @@
+defaults:
+- deepspeech2
+- _self_
+
+hydra:
+  output_subdir:
+  run:
+    dir: data/logs/models/${now:%Y-%m-%d}/
+    

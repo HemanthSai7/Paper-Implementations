@@ -1,0 +1,140 @@
+speech_config:
+  sample_rate: 16000
+  frame_ms: 25
+  stride_ms: 10
+  num_feature_bins: 80
+  feature_type: log_mel_spectrogram
+  preemphasis: 0.97
+  pad_end: False
+  lower_edge_hertz: 0.0
+  upper_edge_hertz: 8000.0
+  output_floor: 1e-9
+  log_base: "10"
+  nfft: 512
+  normalize_signal: True
+  normalize_zscore: False
+  normalize_min_max: False
+  padding: 0.0
+
+decoder_config:
+  type: characters
+  blank_index: 0
+  beam_width: 0
+  norm_score: True
+  lm_config: null
+  vocabulary: ../../../../vocabularies/english.characters
+
+model_config:
+  name: deepspeech2
+  conv_type: conv2d
+  conv_kernels: [ [ 11, 41 ], [ 11, 21 ] ]
+  conv_strides: [[ 2, 2 ], [ 1, 2 ] ]
+  conv_filters: [ 32, 32 ]
+  conv_activation: relu
+  conv_dropout: 0.2
+  conv_padding: same
+  rnn_nlayers: 5
+  rnn_type: lstm
+  rnn_units: 512
+  rnn_bidirectional: False
+  rnn_unroll: False
+  rnn_rowconv: 5
+  rnn_rowconv_activation: relu
+  rnn_dropout: 0.3
+  fc_nlayers: 1
+  fc_units: 1024
+  fc_activation: relu
+  fc_dropout: 0.3
+  blank: 0
+  vocab_size: 29
+  kernel_regularizer:
+    class_name: l2
+    config:
+      l2: 0.0001
+  bias_regularizer:
+    class_name: l2
+    config:
+      l2: 0.0001
+  kernel_initializer:
+    class_name: glorot_uniform
+    config:
+      seed: 42
+  bias_initializer: zeros
+
+data_config:
+  train_dataset_config:
+    enabled: True
+    sample_rate: 16000
+    data_paths:
+      - /home/hemanth/InHouseODV/odvModelTraining.hemanth.saigarladinne/data/LibriSpeech/train.tsv
+    shuffle: True
+    cache: False
+    buffer_size: 1000
+    drop_remainder: True
+    stage: train
+    metadata: null
+    indefinite: True
+
+  eval_dataset_config:
+    enabled: True
+    sample_rate: 16000
+    data_paths:
+      - /home/hemanth/InHouseODV/odvModelTraining.hemanth.saigarladinne/data/LibriSpeech/val.tsv
+    shuffle: True
+    cache: False
+    buffer_size: 1000
+    drop_remainder: True
+    stage: eval
+    metadata: null
+    indefinite: True
+
+  test_dataset_configs:
+    enabled: True
+    sample_rate: 16000
+    data_paths:
+      - /home/hemanth/InHouseODV/odvModelTraining.hemanth.saigarladinne/data/LibriSpeech/test.tsv
+    shuffle: False
+    cache: False
+    buffer_size: null
+    drop_remainder: False
+    stage: test
+    indefinite: False
+
+learning_config:
+  optimizer_config:
+    class_name: Adam
+    config:
+      learning_rate:
+        class_name: src.optimizers.schedules>TransformerLearningRateSchedule
+        config:
+          d_model: 256
+          warmup_steps: 8192
+          max_lr: null
+          min_lr: null
+      beta_1: 0.9
+      beta_2: 0.98
+      epsilon: 1e-9
+  
+  ga_steps: 0
+  gradn_config: null
+  pretrained: False
+
+  running_config:
+    batch_size: 8
+    num_epochs: 200
+    dataset_type: slice
+    devices: [0]
+    checkpoint:
+      filepath: ../../../libri860/checkpoints/{epoch:02d}.h5
+      save_best_only: False
+      save_weights_only: True
+      save_freq: epoch
+    states_dir: libri860/states
+    csv_logger: libri860/training.log
+    tensorboard:
+      log_dir: libri860/tensorboard
+      histogram_freq: 1
+      write_graph: True
+      write_images: True
+      update_freq: epoch
+      profile_batch: 2
