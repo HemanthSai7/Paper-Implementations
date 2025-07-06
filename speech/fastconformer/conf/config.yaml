@@ -1,0 +1,8 @@
+defaults:
+- fastconf
+- _self_
+
+hydra:
+  output_subdir:
+  run:
+    dir: data/logs/fastconformer/${now:%Y-%m-%d}/
