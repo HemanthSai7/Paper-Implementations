@@ -1,1 +1,1 @@
-# Paper-Implementations
+# Paper/Architecture Replication from Scratch Repository using Tensorflow
