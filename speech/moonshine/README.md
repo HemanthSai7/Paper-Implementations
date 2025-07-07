@@ -75,12 +75,12 @@ The implementation consists of a modular encoder-decoder architecture with the f
 ---
 
 ```bibtex
-@misc{moonshine2024,
-  title={Moonshine: Speech Recognition for Live Transcription and Voice Commands},
-  author={Thomas B. Ash, Emilian Basarab, Lukas Mosser, Richard L. Mann},
-  year={2024},
-  eprint={2410.15608},
-  archivePrefix={arXiv},
-  primaryClass={cs.SD}
+@misc{jeffries2024moonshinespeechrecognitionlive,
+      title={Moonshine: Speech Recognition for Live Transcription and Voice Commands}, 
+      author={Nat Jeffries and Evan King and Manjunath Kudlur and Guy Nicholson and James Wang and Pete Warden},
+      year={2024},
+      eprint={2410.15608},
+      archivePrefix={arXiv},
+      primaryClass={cs.SD},
+      url={https://arxiv.org/abs/2410.15608}, 
 }
-```
