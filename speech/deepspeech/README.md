@@ -1,10 +1,25 @@
-# Deepspeech2 model in Tensorflow from scratch implementation
+# DeepSpeech2 Model in TensorFlow
 
-Trained a small deepspeech2 model coded and trained from scratch in Tensorflow 
+> **"Deep Speech 2: End-to-End Speech Recognition in English and Mandarin"**    
+> [arXiv:1512.02595](https://arxiv.org/abs/1512.02595)
 
+## 📝 Abstract
+Implemented DeepSpeech2 in TensorFlow 2.x, faithfully reproducing the original architecture designed for scalable end-to-end speech recognition. This version is trained on the LibriSpeech corpus using log-Mel spectrogram features and optimized for robustness and clarity. The model employs convolutional and recurrent layers with optional row convolution for enhanced context modeling.
 
+## 🎯 Objectives
+- Implement the DeepSpeech2 model from scratch in TensorFlow.
+- Train and evaluate it on LibriSpeech with character-level output.
+- Enable optional row convolution for extended context modeling.
+- Ensure configurable preprocessing and training options.
 
-[DeepSpeech2: End-to-End Speech Recognition in English and Mandarin](https://arxiv.org/pdf/1512.02595)
+## 📦 Model Architecture
+- The model uses the following structure:
+- **Input**: Log-Mel Spectrograms (80 bins, 25ms window, 10ms stride)
+- **Conv Layers**: Two Conv2D layers with stride and padding
+- **RNN Layers**: 5 stacked unidirectional LSTM layers
+- **Row Convolution**: (width = 5)
+- **Fully Connected**: One dense layer before softmax
+- **Output**: Character-level vocabulary + CTC blank token
 
 ## ModelArgs Hyperparameters
 
@@ -28,7 +43,6 @@ Trained a small deepspeech2 model coded and trained from scratch in Tensorflow
 | `sr`                    | 16000                  | Sampling rate of the audio.                                                 |
 | `device`                | `'cuda:0'` 12 GB            | Device to run the model on (e.g., GPU).                                     |
 | `SAMPLING_RATE`         | 16000                  | Sampling rate of the audio.                                                 |
-| `N_MELS`                | 80                     | Number of Mel bins in the spectrogram.                                      |
 | `WINDOW_DURATION`       | 0.025                  | Duration of the analysis window in seconds (25 ms).                         |
 | `STRIDE_DURATION`       | 0.010                  | Stride between consecutive windows in seconds (10 ms).                      |
 | `WINDOW`                | hann                   | FFT Window                                                                  |
@@ -36,10 +50,27 @@ Trained a small deepspeech2 model coded and trained from scratch in Tensorflow
 | `n_channels`            | 1                     | Number of channels in the input spectrogram.                                |
 
 
-### Dataset
+## 📊 Dataset
 
-[LibriSpeech](https://www.openslr.org/12/)
+- **LibriSpeech 1000h**
+- Preprocessing pipeline includes resampling, normalization, and log-mel spectrogram conversion using Hann windowing.
 
+## 🧠 Training Details
 
-### Frameworks:
-**Tensorflow**
+- **Framework**: TensorFlow 2.x  
+- **Optimizer**: Adam with custom LR scheduler (Noam-style warmup)
+- **Device**: Trained on GPU (`cuda:0`)  
+
+---
+
+```bibtex
+@misc{amodei2015deepspeech2endtoend,
+      title={Deep Speech 2: End-to-End Speech Recognition in English and Mandarin}, 
+      author={Dario Amodei and Rishita Anubhai and Eric Battenberg and Carl Case and Jared Casper and Bryan Catanzaro and Jingdong Chen and Mike Chrzanowski and Adam Coates and Greg Diamos and Erich Elsen and Jesse Engel and Linxi Fan and Christopher Fougner and Tony Han and Awni Hannun and Billy Jun and Patrick LeGresley and Libby Lin and Sharan Narang and Andrew Ng and Sherjil Ozair and Ryan Prenger and Jonathan Raiman and Sanjeev Satheesh and David Seetapun and Shubho Sengupta and Yi Wang and Zhiqian Wang and Chong Wang and Bo Xiao and Dani Yogatama and Jun Zhan and Zhenyao Zhu},
+      year={2015},
+      eprint={1512.02595},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/1512.02595}, 
+}
+```
