@@ -1,168 +1,204 @@
-""" CharacterTokenzier for Hugging Face Transformers.
+from src.utils import file_util
 
-This is heavily inspired from CanineTokenizer in transformers package.
-"""
-import json
-import os
-import string
-from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Union
+import codecs
+import unicodedata
+import tensorflow as tf
+import tensorflow_text as tft
 
-from transformers.tokenization_utils import AddedToken, PreTrainedTokenizer
+logger = tf.get_logger()
 
-class CharacterTokenizer(PreTrainedTokenizer):
-    def __init__(self, characters: Sequence[str], model_max_length: int, **kwargs):
-        """Character tokenizer for Hugging Face transformers.
+ENGLISH_CHARACTERS = [
+    "<blank>",
+    " ",
+    "a",
+    "b",
+    "c",
+    "d",
+    "e",
+    "f",
+    "g",
+    "h",
+    "i",
+    "j",
+    "k",
+    "l",
+    "m",
+    "n",
+    "o",
+    "p",
+    "q",
+    "r",
+    "s",
+    "t",
+    "u",
+    "v",
+    "w",
+    "x",
+    "y",
+    "z",
+    "'",
+]
 
-        Args:
-            characters (Sequence[str]): List of desired characters. Any character which
-                is not included in this list will be replaced by a special token called
-                [UNK] with id=6. Following are list of all of the special tokens with
-                their corresponding ids:
-                    "[BOS]": 0
-                    "[EOS]": 1
-                    "[PAD]": 2
-                    "[UNK]": 3
-                an id (starting at 4) will be assigned to each character.
+class Tokenizer:
+    def __init__(self, decoder_config):
+        self.scorer = None
+        self.decoder_config = decoder_config
+        self.blank = None
+        self.tokens2indices = {}
+        self.tokens = []
+        self.num_classes = None
+        self.max_length = 0
 
-            model_max_length (int): Model maximum sequence length.
-        """
-        self.characters = characters
-        self.model_max_length = model_max_length
-        bos_token = AddedToken("[BOS]", lstrip=False, rstrip=False)
-        eos_token = AddedToken("[EOS]", lstrip=False, rstrip=False)
-        pad_token = AddedToken("[PAD]", lstrip=False, rstrip=False)
-        unk_token = AddedToken("[UNK]", lstrip=False, rstrip=False)
-
-        self._vocab_str_to_int = {
-            "[BOS]": 1,
-            "[EOS]": 2,
-            "[PAD]": 3,
-            "[UNK]": 4,
-            **{ch: i + 5 for i, ch in enumerate(characters)},
-        }
-        # print(self._vocab_str_to_int)
-        self._vocab_int_to_str = {v: k for k, v in self._vocab_str_to_int.items()}
-        self.blank = 0
-
-        super().__init__(
-            bos_token=bos_token,
-            eos_token=eos_token,
-            pad_token=pad_token,
-            unk_token=unk_token,
-            add_prefix_space=False,
-            model_max_length=model_max_length,
-            **kwargs,
-        )
+    @classmethod
+    def corpus_generator(cls, decoder_config):
+        for file_path in file_util.preprocess_paths(decoder_config.train_files):
+            logger.info(f"Reading {file_path} ...")
+            with tf.io.gfile.GFile(file_path, "r") as f:
+                temp_lines = f.read().splitlines()
+                for line in temp_lines[1:]:  # Skip the header of tsv file
+                    data = line.split("\t", 2)[-1]  # get only transcript
+                    data = cls.normalize_text(data, decoder_config).numpy()
+                    yield data
 
     @property
-    def vocab_size(self) -> int:
-        return len(self._vocab_str_to_int)
+    def shape(self) -> list:
+        return [self.max_length if self.max_length > 0 else None]
 
-    def get_vocab(self):
-        return self._vocab_str_to_int
+    @property
+    def prepand_shape(self) -> list:
+        return [self.max_length + 1 if self.max_length > 0 else None]
 
-    def _tokenize(self, text: str) -> List[str]:
-        return list(text)
-
-    def _convert_token_to_id(self, token: str) -> int:
-        return self._vocab_str_to_int.get(token, self._vocab_str_to_int["[UNK]"])
-
-    def _convert_id_to_token(self, index: int) -> str:
-        return self._vocab_int_to_str[index]
-
-    def convert_tokens_to_string(self, tokens):
-        return "".join(tokens)
-    
-    def prepand_blank(self, labels) -> List[int]:
-        """Prepends a blank token to the token ids."""
-        blank_token_id = self._vocab_str_to_int.get("[BLANK]", 0)
-        return [blank_token_id] + labels
-
-    def build_inputs_with_special_tokens(
-        self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None
-    ) -> List[int]:
-        eos = [self.eos_token_id]
-        bos = [self.bos_token_id]
-        result = bos + token_ids_0 + eos
-        if token_ids_1 is not None:
-            result += token_ids_1 + eos
-        return result
-
-    def get_special_tokens_mask(
+    def update_length(
         self,
-        token_ids_0: List[int],
-        token_ids_1: Optional[List[int]] = None,
-        already_has_special_tokens: bool = False,
-    ) -> List[int]:
-        if already_has_special_tokens:
-            return super().get_special_tokens_mask(
-                token_ids_0=token_ids_0,
-                token_ids_1=token_ids_1,
-                already_has_special_tokens=True,
-            )
+        length: int,
+    ):
+        self.max_length = max(self.max_length, length)
 
-        result = [1] + ([0] * len(token_ids_0)) + [1]
-        if token_ids_1 is not None:
-            result += ([0] * len(token_ids_1)) + [1]
-        return result
-
-    def create_token_type_ids_from_sequences(
-        self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None
-    ) -> List[int]:
-        sep = [self.sep_token_id]
-        cls = [self.cls_token_id]
-
-        result = len(cls + token_ids_0 + sep) * [0]
-        if token_ids_1 is not None:
-            result += len(token_ids_1 + sep) * [1]
-        return result
-
-    def get_config(self) -> Dict:
-        return {
-            "char_ords": [ord(ch) for ch in self.characters],
-            "model_max_length": self.model_max_length,
-        }
+    def reset_length(self):
+        self.max_length = 0
 
     @classmethod
-    def from_config(cls, config: Dict) -> "CharacterTokenizer":
-        cfg = {}
-        cfg["characters"] = [chr(i) for i in config["char_ords"]]
-        cfg["model_max_length"] = config["model_max_length"]
-        return cls(**cfg)
+    def normalize_text(cls, text: tf.Tensor, decoder_config):
+        text = tf.strings.regex_replace(text, b"\xe2\x81\x87".decode("utf-8"), "")
+        text = tft.normalize_utf8(text, decoder_config["normalization_form"])
+        text = tf.strings.regex_replace(text, r"\p{Cc}|\p{Cf}", " ")
+        # text = tf.strings.regex_replace(text, decoder_config["unknown_token"], "")
+        # text = tf.strings.regex_replace(text, decoder_config["pad_token"], "")
+        text = tf.strings.regex_replace(text, r" +", " ")
+        text = tf.strings.lower(text, encoding="utf-8")
+        text = tf.strings.strip(text)  # remove trailing whitespace
+        return text
 
-    def save_pretrained(self, save_directory: Union[str, os.PathLike], **kwargs):
-        cfg_file = Path(save_directory) / "tokenizer_config.json"
-        cfg = self.get_config()
-        with open(cfg_file, "w") as f:
-            json.dump(cfg, f, indent=4)
+    def add_scorer(self, scorer: any = None):
+        """Add scorer to this instance"""
+        self.scorer = scorer
 
-    @classmethod
-    def from_pretrained(cls, save_directory: Union[str, os.PathLike], **kwargs):
-        cfg_file = Path(save_directory) / "tokenizer_config.json"
-        with open(cfg_file) as f:
-            cfg = json.load(f)
-        return cls.from_config(cfg)
+    def normalize_indices(self, indices: tf.Tensor) -> tf.Tensor:
+        """
+        Remove -1 in indices by replacing them with blanks
+        Args:
+            indices (tf.Tensor): shape any
 
-# chars = string.ascii_lowercase + " !," # This is character vocab
-# print(chars)
-# model_max_length = 2048
-# tokenizer = CharacterTokenizer(chars, model_max_length)
+        Returns:
+            tf.Tensor: normalized indices with shape same as indices
+        """
+        with tf.name_scope("normalize_indices"):
+            minus_one = -1 * tf.ones_like(indices, dtype=tf.int32)
+            blank_like = self.blank * tf.ones_like(indices, dtype=tf.int32)
+            return tf.where(tf.equal(indices, minus_one), blank_like, indices)
 
-# example = ["i love nlp!", "nlp is great!"]
-# tokens = tokenizer.batch_encode_plus(
-#     example,
-#     add_special_tokens=True,
-#     # max_length=model_max_length,
-#     padding="longest",
-#     # truncation=True,
-#     return_tensors="tf",
-# )
-# example = "i love nlp!@"
-# tokens = tokenizer(example)
-# print(tokens)
+    def prepand_blank(self, text: tf.Tensor) -> tf.Tensor:
+        """Prepand blank index for transducer models"""
+        return tf.concat([[self.blank], text], 0)
 
-# print(tokenizer.decode(tokens["input_ids"]))
-# print(tokenizer.batch_decode(tokens["input_ids"]))
-# print(tokenizer.vocab_size)
+    def tokenize(self, text: str) -> tf.Tensor:
+        raise NotImplementedError()
 
+    def detokenize(self, indices: tf.Tensor) -> tf.Tensor:
+        raise NotImplementedError()
+
+    def detokenize_unicode_points(self, indices: tf.Tensor) -> tf.Tensor:
+        raise NotImplementedError()
+
+class CharacterTokenizer(Tokenizer):
+    """
+    Extract text feature based on char-level granularity.
+    By looking up the vocabulary table, each line of transcript will be
+    converted to a sequence of integer indexes.
+    """
+
+    def __init__(self, decoder_config):
+        print(decoder_config)
+        super().__init__(decoder_config)
+        lines = []
+        if self.decoder_config["vocabulary"] is not None:
+            with codecs.open(self.decoder_config["vocabulary"], "r", "utf-8") as fin:
+                lines.extend(fin.readlines())
+        else:
+            lines = ENGLISH_CHARACTERS
+        self.blank = self.decoder_config["blank_index"]
+        self.tokens = []
+        for line in lines:
+            line = unicodedata.normalize(self.decoder_config["normalization_form"], line.lower()).strip("\n")
+            if line.startswith("#") or not line:
+                continue
+            if line == "<blank>":
+                line = ""
+            self.tokens.append(line)
+        if self.blank is None:
+            self.blank = len(self.tokens)  # blank not at zero
+        self.num_classes = len(self.tokens)
+        self.indices = tf.range(self.num_classes, dtype=tf.int32)
+        self.tokenizer = tf.lookup.StaticHashTable(
+            tf.lookup.KeyValueTensorInitializer(keys=self.tokens, values=self.indices, key_dtype=tf.string, value_dtype=tf.int32),
+            default_value=self.blank,
+        )
+        self.detokenizer = tf.lookup.StaticHashTable(
+            tf.lookup.KeyValueTensorInitializer(keys=self.indices, values=self.tokens, key_dtype=tf.int32, value_dtype=tf.string),
+            default_value=self.tokens[self.blank],
+        )
+        self.upoints = tf.strings.unicode_decode(self.tokens, "UTF-8").to_tensor(shape=[None, 1])
+
+    def tokenize(self, text):
+        text = self.normalize_text(text, self.decoder_config)
+        text = tf.strings.unicode_split(text, "UTF-8")
+        return self.tokenizer.lookup(text)
+
+    def detokenize(self, indices: tf.Tensor) -> tf.Tensor:
+        """
+        Convert list of indices to string
+        Args:
+            indices: tf.Tensor with dim [B, None]
+
+        Returns:
+            transcripts: tf.Tensor of dtype tf.string with dim [B]
+        """
+        indices = self.normalize_indices(indices)
+        # indices = tf.ragged.boolean_mask(indices, tf.not_equal(indices, self.blank))
+        tokens = self.detokenizer.lookup(indices)
+        tokens = tf.strings.reduce_join(tokens, axis=-1)
+        tokens = self.normalize_text(tokens, self.decoder_config)
+        return tokens
+    
+    def get_vocab(self) -> list:
+        """
+        Get the vocabulary of this tokenizer
+        Returns:
+            list: vocabulary of this tokenizer
+        """
+        return self.tokens
+
+    @tf.function(input_signature=[tf.TensorSpec([None], dtype=tf.int32)])
+    def detokenize_unicode_points(self, indices: tf.Tensor) -> tf.Tensor:
+        """
+        Transform Predicted Indices to Unicode Code Points (for using tflite)
+        Args:
+            indices: tf.Tensor of Classes in shape [None]
+
+        Returns:
+            unicode code points transcript with dtype tf.int32 and shape [None]
+        """
+        with tf.name_scope("indices2upoints"):
+            indices = self.normalize_indices(indices)
+            upoints = tf.gather_nd(self.upoints, tf.expand_dims(indices, axis=-1))
+            return tf.gather_nd(upoints, tf.where(tf.not_equal(upoints, 0)))

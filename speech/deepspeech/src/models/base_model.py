@@ -1,5 +1,5 @@
 from src.featurizers.tokenizer import CharacterTokenizer
-from src.utils import file_util, shape_util, data_util, math_util
+from src.utils import file_util, shape_util, data_util
 from src.schema import TrainInput, PredictInput, PredictOutputWithTranscript, PredictOutput
 
 import tensorflow as tf
@@ -77,8 +77,6 @@ class BaseModel(tf.keras.Model):
         features_length = tf.keras.Input(shape=[], batch_size=batch_size, dtype=tf.int32)
         predictions = tf.keras.Input(shape=prediction_shape, batch_size=batch_size, dtype=tf.int32)
         predictions_length = tf.keras.Input(shape=[], batch_size=batch_size, dtype=tf.int32)
-        self._per_replica_batch_size = int(batch_size / self.distribute_strategy.num_replicas_in_sync)
-        self._batch_size = batch_size
         outputs = self(
             TrainInput(
                 inputs=features,
@@ -88,42 +86,20 @@ class BaseModel(tf.keras.Model):
             ),
             training=False
         )
-        return tf.nest.map_structure(
-            lambda x: shape_util.shape_list_per_replica(x, per_replica_batch_size=self._per_replica_batch_size),
-            outputs,
-        )
+        return outputs
 
     def compile(
         self,
         loss,
         optimizer,
         run_eagerly=None,
-        mxp="none",
-        ga_steps=None,
-        gradn_config=None,
         **kwargs,
     ):
         optimizer = tf.keras.optimizers.get(optimizer)
-        self.use_loss_scale = mxp != "none"
-        if self.use_loss_scale:
-            optimizer = tf.keras.mixed_precision.LossScaleOptimizer(optimizer)
-            logger.info("Using loss scale")
-        if isinstance(ga_steps, int) and ga_steps > 1:
-            self.use_ga = True
-            self.ga = GradientAccumulator(ga_steps=ga_steps, model=self)
-            logger.info(f"Using gradient accumulation with accumulate steps = {ga_steps}")
-        else:
-            self.use_ga = False
-        self.gradn = tf.keras.regularizers.get(gradn_config) if gradn_config else None
-        self.distribute_reduction_method = "sum"
         super().compile(optimizer=optimizer, loss=loss, run_eagerly=run_eagerly, **kwargs)
 
     def call(self, inputs: TrainInput, training=False):
         raise NotImplementedError()
-
-    def _get_global_batch_size(self, y_pred):
-        global_batch_size = tf.shape(y_pred["logits"])[0] * self.distribute_strategy.num_replicas_in_sync
-        return global_batch_size
     
     def _validate_and_get_metrics_result(self, logs):
         logs = super()._validate_and_get_metrics_result(logs)
@@ -134,72 +110,36 @@ class BaseModel(tf.keras.Model):
     def _train_step(self, data):
         x = data[0]
         y, _ = data_util.set_length(data[1]["labels"], data[1]["labels_length"])
-        sample_weight = None
 
         with tf.GradientTape() as tape:
             tape.watch(x["inputs"])
-            original_weights = self.apply_gwn()
             outputs = self(x, training=True)
             tape.watch(outputs["logits"])
             y_pred = outputs["logits"]
-            y_pred, _ = data_util.set_length(y_pred, x["logits_length"])
-            self.remove_gwn(original_weights)
+            y_pred, _ = data_util.set_length(y_pred, outputs["logits_length"])
             tape.watch(y_pred)
-            loss = self.compute_loss(y, y, y_pred, sample_weight)
-
-            if self.use_ga:
-                loss = loss / self.ga.total_steps
-
-            if self.use_loss_scale:
-                loss = self.optimizer.get_scaled_loss(loss)
-                gradients = tape.gradient(loss, self.trainable_variables)
-                gradients = self.optimizer.get_unscaled_gradients(gradients)
-            else:
-                gradients = tape.gradient(loss, self.trainable_variables)
-
+            loss = self.compute_loss(x, y, y_pred)
+            gradients = tape.gradient(loss, self.trainable_variables)
         return gradients
     
     def train_step(self, data):
-        if not self.use_ga:
-            gradients = self._train_step(data)
-        else:
-            for i in tf.range(self.ga.total_steps):
-                per_ga_step_data = tf.nest.map_structure(
-                    lambda x: math_util.slice_batch_tensor(x, index=i, batch_size=self._per_replica_batch_size),
-                )
-                per_ga_gradients = self._train_step(per_ga_step_data)
-                self.ga.accumulate(per_ga_gradients)
-        gradients = self.ga.get_gradients()
-        if self.gradn is not None:
-            gradients = self.gradn(step=self.optimizer.iterations, gradients=gradients)
+        gradients = self._train_step(data)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
-        if self.use_ga:
-            self.ga.reset()
         metrics = self.get_metrics_result()
-        metrics = tf.nest.map_structure(lambda x: x / self.distribute_strategy.num_replicas_in_sync, metrics)
         return metrics
     
     def _test_step(self, data):
         x = data[0]
         y, _ = data_util.set_length(data[1]["labels"], data[1]["labels_length"])
-        sample_weight = None
 
         outputs = self(x, training=False)
         y_pred, _ = data_util.set_length(outputs["logits"], outputs["logits_length"])
 
-        self.compute_loss(x, y, y_pred, sample_weight)
+        self.compute_loss(x, y, y_pred)
 
     def test_step(self, data):
-        if not self.use_ga:
-            self._test_step(data)
-        else:
-            for i in tf.range(self.ga.total_steps):
-                per_ga_step_data = tf.nest.map_structure(
-                    lambda x: math_util.slice_batch_tensor(x, index=i, batch_size=self._per_replica_batch_size), data
-                )
-                self._test_step(per_ga_step_data)
+        self._test_step(data)
         metrics = self.get_metrics_result()
-        metrics = tf.nest.map_structure(lambda x: x / self.distribute_strategy.num_replicas_in_sync, metrics)
         return metrics
     
     def predict_step(self, data):

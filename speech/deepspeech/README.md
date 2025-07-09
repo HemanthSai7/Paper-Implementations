@@ -1,4 +1,4 @@
-# DeepSpeech2 Model in TensorFlow
+# Deepspeech2 model in Tensorflow from scratch implementation
 
 > **"Deep Speech 2: End-to-End Speech Recognition in English and Mandarin"**    
 > [arXiv:1512.02595](https://arxiv.org/abs/1512.02595)
@@ -48,6 +48,11 @@ Implemented DeepSpeech2 in TensorFlow 2.x, faithfully reproducing the original a
 | `WINDOW`                | hann                   | FFT Window                                                                  |
 | `max_t`                 | variable                    | Maximum time steps in the spectrogram.                                      |
 | `n_channels`            | 1                     | Number of channels in the input spectrogram.                                |
+
+## Model Summary
+<p align="center">
+  <img src="../../img/ds2_summary.png" alt="Loss Curves" width="600"/>
+</p>
 
 
 ## 📊 Dataset

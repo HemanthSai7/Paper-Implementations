@@ -5,5 +5,5 @@ defaults:
 hydra:
   output_subdir:
   run:
-    dir: data/logs/models/${now:%Y-%m-%d}/
+    dir: logs/models/${now:%Y-%m-%d}/
     

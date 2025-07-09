@@ -60,38 +60,6 @@ def has_devices(
         return all((len(tf.config.list_logical_devices(d)) > 0 for d in devices))
     return len(tf.config.list_logical_devices(devices)) > 0
 
-def setup_mxp(
-    mxp: str = "strict",
-):
-    """
-    Setup mixed precision
-
-    Parameters
-    ----------
-    mxp : str, optional
-        Either "strict", "auto" or "none", by default "strict"
-
-    Raises
-    ------
-    ValueError
-        Wrong value for mxp
-    """
-    options = ["strict", "strict_auto", "auto", "none"]
-    if mxp not in options:
-        raise ValueError(f"mxp must be in {options}")
-    if mxp == "strict":
-        policy = "mixed_bfloat16" if has_devices("TPU") else "mixed_float16"
-        tf.keras.mixed_precision.set_global_policy(policy)
-        tf.get_logger().info(f"USING mixed precision policy {policy}")
-    elif mxp == "strict_auto":
-        policy = "mixed_bfloat16" if has_devices("TPU") else "mixed_float16"
-        tf.keras.mixed_precision.set_global_policy(policy)
-        tf.config.optimizer.set_experimental_options({"auto_mixed_precision": True})
-        tf.get_logger().info(f"USING auto mixed precision policy {policy}")
-    elif mxp == "auto":
-        tf.config.optimizer.set_experimental_options({"auto_mixed_precision": True})
-        tf.get_logger().info("USING auto mixed precision policy")
-
 def setup_seed(
     seed: int = 42,
 ):

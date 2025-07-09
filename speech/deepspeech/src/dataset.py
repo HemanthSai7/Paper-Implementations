@@ -51,15 +51,8 @@ def get(
 
 def get_global_shape(
     config: Config,
-    strategy,
     *datasets,
-    batch_size: int = None,
-    ga_steps: int = None,
 ):
-    batch_size = (batch_size or config.learning_config.running_config.batch_size) * strategy.num_replicas_in_sync
-    ds_batch_size = batch_size
-    if ga_steps is not None and ga_steps > 1:
-        ds_batch_size *= ga_steps
 
     max_input_length, max_label_length = None, None
 
@@ -86,8 +79,6 @@ def get_global_shape(
     )
 
     return dict(
-        ds_batch_size=ds_batch_size,
-        batch_size=batch_size,
         input_shape=input_shape,
         prediction_shape=prediction_shape,
         label_shape=label_shape,
@@ -270,18 +261,7 @@ class ASRDataset(BaseDataset):
         inputs_length = tf.cast(tf.shape(inputs)[0], tf.int32)
         inputs, inputs_length = self.speech_featurizer((inputs, inputs_length), training=self.training)
 
-        transcript_str = tf.strings.as_string(transcript)
-        transcript_str = tf.ensure_shape(transcript_str, [])
-
-        def tokenize_transcript(text):
-            text_str = text.numpy().decode("utf-8")
-            return np.array(self.tokenizer.encode(text_str, add_special_tokens=True), dtype=np.int32)
-        
-        labels = tf.py_function(
-            func=tokenize_transcript,
-            inp=[transcript_str],
-            Tout=tf.int32,
-        )
+        labels = self.tokenizer.tokenize(transcript)
         labels_length = tf.shape(labels, out_type=tf.int32)[0]
 
         predictions = self.tokenizer.prepand_blank(labels)
@@ -381,5 +361,4 @@ class ASRSliceDataset(ASRDataset):
         options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
         dataset = dataset.with_options(options)
         dataset = dataset.map(self.load, num_parallel_calls=AUTOTUNE, deterministic=False)
-        print("PADDED SHAPES:", padded_shapes)
         return self.process(dataset, batch_size, shapes=padded_shapes)

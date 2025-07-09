@@ -5,14 +5,13 @@ from src.helpers import (
     prepare_training_datasets, 
     prepare_training_dataloaders
 )
+from src.losses.ctc_loss import CTCLoss
 from src.dataset import get_global_shape
 from src.models import BaseModel, DeepSpeech2
 
 from omegaconf import DictConfig, OmegaConf
 
-import json
 import hydra
-import keras
 import tensorflow as tf
 
 logger = tf.get_logger()
@@ -22,17 +21,11 @@ logger = tf.get_logger()
 def main(
     config: DictConfig,
     batch_size: int = None,
-    mxp: int = "none",
-    spx: int = None,
-    devices: list = None,
-    ga_steps: int = None,
-    jit_compile: bool = False,
 ):
     config = Config(OmegaConf.to_container(config, resolve=True), training=True)
 
     tf.keras.backend.clear_session()
     env_util.setup_seed()
-    env_util.setup_mxp(mxp=mxp)
     strategy = env_util.setup_strategy(config.learning_config["running_config"]["devices"])
     batch_size = batch_size or config.learning_config["running_config"]["batch_size"]
 
@@ -47,12 +40,11 @@ def main(
 
     shapes = get_global_shape(
         config,
-        strategy,
         train_dataset,
         valid_dataset,
-        batch_size=batch_size or config.learning_config["running_config"]["batch_size"],
-        ga_steps=ga_steps or config.learning_config["ga_steps"]
     )
+
+    print("Global shapes:", shapes)
 
     train_data_loader, valid_data_loader, global_batch_size = prepare_training_dataloaders(
         train_dataset=train_dataset,
@@ -63,26 +55,22 @@ def main(
     )
 
     for batch in train_data_loader:
-        print("Batch audio input shape:", batch["inputs"].shape)
-        print("Batch audio length shape:", batch["inputs_length"].shape)
-        print("Batch text input shape:", batch["predictions"].shape)
-        print("Batch text length shape:", batch["predictions_length"].shape)
+        print("Batch audio input shape:", batch[0]["inputs"].shape)
+        print("Batch audio length shape:", batch[0]["inputs_length"].shape)
+        print("Batch text input shape:", batch[0]["predictions"].shape)
+        print("Batch text length shape:", batch[0]["predictions_length"].shape)
         break
 
 
     with strategy.scope():
         model: BaseModel = DeepSpeech2(**config.model_config)
-        model.make(**shapes)
+        model.make(**shapes, batch_size=global_batch_size)
         if config.learning_config["pretrained"]:
-            model.load_weights(config.learning_config["pretrained"],by_name=True,skip_mismatch=False)
+            model.load_weights(config.learning_config["pretrained"], by_name=True, skip_mismatch=False)
         model.compile(
             optimizer=tf.keras.optimizers.get(config.learning_config["optimizer_config"]),
-            steps_per_execution=spx,
-            jit_compile=jit_compile,
-            mxp=mxp,
-            ga_steps=ga_steps or config.learning_config["ga_steps"],
-            gradn_config=config.learning_config["gradn_config"],
-            run_eagerly=True,
+            loss=CTCLoss(blank=0, name="ctc_loss"),
+            run_eagerly=False,
         )
         model.summary(expand_nested=True)
 

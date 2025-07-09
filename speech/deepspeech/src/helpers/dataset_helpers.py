@@ -2,8 +2,6 @@ from src.featurizers.speech_featurizer import SpeechFeaturizer
 from src.featurizers.tokenizer import CharacterTokenizer
 from src.dataset import get
 
-import os
-import string
 import tensorflow as tf
 
 logger = tf.get_logger()
@@ -14,8 +12,8 @@ def prepare_featurizers(
     speech_config = config.speech_config
     feature_extractor = SpeechFeaturizer(**dict(speech_config))
 
-    chars = string.ascii_lowercase + " " # This is character vocab
-    tokenizer = CharacterTokenizer(chars, model_max_length=None)
+    decoder_config = config.decoder_config
+    tokenizer = CharacterTokenizer(decoder_config)
 
     # tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf", token=os.getenv("HF_TOKEN"))
     # tokenizer.add_special_tokens({"pad_token": "[PAD]"})

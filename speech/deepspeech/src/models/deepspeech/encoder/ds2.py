@@ -371,7 +371,7 @@ class RNNModule(BaseLayer):
         states = []
         for block in self.blocks:
             states.append(tf.stack(block.get_initial_state(batch_size=batch_size), axis=0))
-        return states
+        return tf.transpose(tf.stack(states, axis=0), perm=[2, 0, 1, 3])
 
     def call(self, inputs, training=False):
         outputs = inputs

@@ -9,7 +9,7 @@ class CTCLoss(tf.keras.losses.Loss):
     def __init__(
         self,
         blank=0,
-        reduction="sum_over_batch_size",
+        reduction="auto",
         name=None,
     ):
         super(CTCLoss, self).__init__(reduction=reduction, name=name)
@@ -39,4 +39,12 @@ class CTCLoss(tf.keras.losses.Loss):
             blank_index=self.blank,
             name=self.name
         )
+        # per_example_loss = tf.reduce_sum(per_element_loss, axis=-1)
+
+        # if self.global_batch_size is not None:
+        #     return tf.nn.compute_average_loss(
+        #         per_example_loss,
+        #         global_batch_size=self.global_batch_size,
+        #     )
+        # return per_example_loss
     

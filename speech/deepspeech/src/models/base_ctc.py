@@ -25,8 +25,7 @@ class CTCModel(BaseModel):
         self.decoder = decoder
         self.time_reduction_factor = 1
 
-    def compile(self, optimizer, output_shapes=None, **kwargs):
-        loss = CTCLoss(blank=self.blank, name="ctc_loss")
+    def compile(self, optimizer, loss, output_shapes=None, **kwargs):
         return super().compile(loss, optimizer, **kwargs)
     
     def call(self, inputs, training=False):

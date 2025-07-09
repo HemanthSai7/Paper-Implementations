@@ -12,17 +12,25 @@ speech_config:
   log_base: "10"
   nfft: 512
   normalize_signal: True
-  normalize_zscore: False
+  normalize_zscore: True
   normalize_min_max: False
   padding: 0.0
 
 decoder_config:
-  type: characters
   blank_index: 0
   beam_width: 0
   norm_score: True
   lm_config: null
-  vocabulary: ../../../../vocabularies/english.characters
+  normalization_form: NFKC
+  # unknown_token: "<unk>"
+  # unknown_index: -1
+  # pad_token: "<pad>"
+  # pad_index: 2
+  # bos_token: "<bos>"
+  # bos_index: 1
+  # eos_token: "<eos>"
+  # eos_index: 3
+  vocabulary: /home/hemanth/GIT_Projects/Paper-Implementations/speech/deepspeech/vocabularies/english.characters
 
 model_config:
   name: deepspeech2
@@ -50,11 +58,11 @@ model_config:
   kernel_regularizer:
     class_name: l2
     config:
-      l2: 0.0001
+      l2: 0.001
   bias_regularizer:
     class_name: l2
     config:
-      l2: 0.0001
+      l2: 0.001
   kernel_initializer:
     class_name: glorot_uniform
     config:
@@ -66,7 +74,7 @@ data_config:
     enabled: True
     sample_rate: 16000
     data_paths:
-      - /home/hemanth/InHouseODV/odvModelTraining.hemanth.saigarladinne/data/LibriSpeech/train.tsv
+      - /home/hemanth/GIT_Projects/Paper-Implementations/speech/data/LibriSpeech/train_860.tsv
     shuffle: True
     cache: False
     buffer_size: 1000
@@ -79,7 +87,7 @@ data_config:
     enabled: True
     sample_rate: 16000
     data_paths:
-      - /home/hemanth/InHouseODV/odvModelTraining.hemanth.saigarladinne/data/LibriSpeech/val.tsv
+      - /home/hemanth/GIT_Projects/Paper-Implementations/speech/data/LibriSpeech/val.tsv
     shuffle: True
     cache: False
     buffer_size: 1000
@@ -92,7 +100,7 @@ data_config:
     enabled: True
     sample_rate: 16000
     data_paths:
-      - /home/hemanth/InHouseODV/odvModelTraining.hemanth.saigarladinne/data/LibriSpeech/test.tsv
+      - /home/hemanth/GIT_Projects/Paper-Implementations/speech/data/LibriSpeech/test_orig.tsv
     shuffle: False
     cache: False
     buffer_size: null
@@ -104,35 +112,34 @@ learning_config:
   optimizer_config:
     class_name: Adam
     config:
-      learning_rate:
-        class_name: src.optimizers.schedules>TransformerLearningRateSchedule
-        config:
-          d_model: 256
-          warmup_steps: 8192
-          max_lr: null
-          min_lr: null
+      learning_rate: 1e-4
+        # class_name: src.optimizers.schedulers>TransformerScheduler
+        # config:
+        #   d_model: 256
+        #   warmup_steps: 8192
+        #   max_lr: 1e-3
+        #   min_lr: 1e-6
       beta_1: 0.9
       beta_2: 0.98
       epsilon: 1e-9
-  
-  ga_steps: 0
-  gradn_config: null
+      clipnorm: 1.0
+      
   pretrained: False
 
   running_config:
-    batch_size: 8
+    batch_size: 4
     num_epochs: 200
     dataset_type: slice
     devices: [0]
     checkpoint:
-      filepath: ../../../libri860/checkpoints/{epoch:02d}.h5
+      filepath: checkpoints/{epoch:02d}.h5
       save_best_only: False
       save_weights_only: True
       save_freq: epoch
-    states_dir: libri860/states
-    csv_logger: libri860/training.log
+    states_dir: states
+    csv_logger: training.log
     tensorboard:
-      log_dir: libri860/tensorboard
+      log_dir: tensorboard
       histogram_freq: 1
       write_graph: True
       write_images: True
