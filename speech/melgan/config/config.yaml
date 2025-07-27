@@ -1,0 +1,8 @@
+defaults:
+- melgan
+- _self_
+
+hydra:
+  output_subdir:
+  run:
+    dir: data/logs/melgan/${now:%Y-%m-%d}/

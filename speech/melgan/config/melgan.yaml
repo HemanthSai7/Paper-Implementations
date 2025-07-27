@@ -1,0 +1,114 @@
+speech_config:
+  sample_rate: 16000
+  frame_ms: 25
+  stride_ms: 10
+  num_feature_bins: 80
+  feature_type: log_mel_spectrogram
+  preemphasis: 0.97
+  pad_end: False
+  lower_edge_hertz: 0.0
+  upper_edge_hertz: 8000.0
+  output_floor: 1e-9
+  log_base: "10"
+  nfft: 512
+  normalize_signal: True
+  normalize_zscore: False
+  normalize_min_max: False
+  padding: 0.0
+
+model_config:
+  generator:
+    upsample_scales: [8, 8, 2, 2]
+    filters: 512
+    dilations: [1, 3, 9]
+    kernel_size: 7
+
+  discriminator:
+    num_discriminators: 3
+    num_layers: 4
+    base_filters: 16
+    kernel_size: 15
+    stride: 4
+
+data_config:
+  train_dataset_config:
+    enabled: True
+    data_paths:
+      - /home/hemanth/GIT_Projects/Paper-Implementations/speech/melgan/data/t1.tsv
+    shuffle: False
+    cache: False
+    buffer_size: 1000
+    drop_remainder: True
+    stage: train
+    metadata: null
+    indefinite: True
+
+  eval_dataset_config:
+    enabled: True
+    data_paths:
+      - /home/hemanth/GIT_Projects/Paper-Implementations/speech/melgan/data/t1.tsv
+    shuffle: True
+    cache: False
+    buffer_size: 1000
+    drop_remainder: True
+    stage: eval
+    metadata: null
+    indefinite: True
+
+  test_dataset_configs:
+    enabled: True
+    data_paths:
+      - /home/hemanth/GIT_Projects/Paper-Implementations/speech/melgan/data/t1.tsv
+    shuffle: False
+    cache: False
+    buffer_size: null
+    drop_remainder: False
+    stage: test
+    indefinite: False
+
+learning_config:
+  generator_optimizer_config:
+    class_name: Adam
+    config:
+      learning_rate:
+        class_name: src.optimizers.schedules>TransformerLearningRateSchedule
+        config:
+          d_model: 256
+          warmup_steps: 8192
+          max_lr: null
+          min_lr: null
+  discriminator_optimizer_config:
+    class_name: Adam
+    config:
+      learning_rate:
+        class_name: src.optimizers.schedules>TransformerLearningRateSchedule
+        config:
+          d_model: 256
+          warmup_steps: 8192
+          max_lr: null
+          min_lr: null
+      beta_1: 0.9
+      beta_2: 0.98
+      epsilon: 1e-9
+  
+  pretrained: False
+
+  running_config:
+    batch_size: 4
+    num_epochs: 200
+    dataset_type: slice
+    devices: [0]
+    checkpoint:
+      filepath: checkpoints/{epoch:02d}.h5
+      save_best_only: False
+      save_weights_only: True
+      save_freq: epoch
+    states_dir: states
+    csv_logger: training.log
+    tensorboard:
+      log_dir: tensorboard
+      histogram_freq: 1
+      write_graph: True
+      write_images: True
+      update_freq: epoch
+      profile_batch: 2
