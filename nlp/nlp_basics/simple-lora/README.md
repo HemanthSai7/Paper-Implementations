@@ -83,9 +83,6 @@ Probabilities - Negative: 0.9604 | Positive: 0.0396
 - [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685)
 
 ## 🎓 Citation
-
-If you use this implementation, please cite the original LoRA paper:
-
 ```bibtex
 @article{hu2021lora,
   title={LoRA: Low-Rank Adaptation of Large Language Models},
