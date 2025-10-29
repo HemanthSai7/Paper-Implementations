@@ -97,9 +97,9 @@ class LoRAModel(nn.Module):
                     new_layer = LoRAEmbedding(num_embeddings=child.num_embeddings,
                                            embedding_dim=child.embedding_dim,
                                            rank=self.config.rank,
-                                           lora_alpha=config.lora_alpha,
-                                           lora_dropout=config.lora_dropout,
-                                           use_rslora=config.use_rslora)
+                                           lora_alpha=self.config.lora_alpha,
+                                           lora_dropout=self.config.lora_dropout,
+                                           use_rslora=self.config.use_rslora)
                     print(f"State dict keys: {list(child.state_dict().keys())}")
                     new_layer._load_pretrained_weights(child.state_dict())
                     setattr(module, name, new_layer)
