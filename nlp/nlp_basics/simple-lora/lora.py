@@ -119,6 +119,22 @@ class LoRAModel(nn.Module):
                     # parametrize.remove_parametrizations(new_layer, "weight", leave_parametrized=True)
                     new_layer._load_pretrained_weights(child.state_dict())
                     setattr(module, name, new_layer)
+                
+                elif isinstance(child, nn.LSTM):
+                    new_layer = LoRALSTM(input_size=child.input_size,
+                                         hidden_size=child.hidden_size,
+                                         num_layers=child.num_layers,
+                                         bias=True if child.bias else False,
+                                         batch_first=child.batch_first,
+                                         dropout=child.dropout,
+                                         bidirectional=child.bidirectional,
+                                         rank=self.config.rank,
+                                         lora_alpha=self.config.lora_alpha,
+                                         lora_dropout=self.config.lora_dropout,
+                                         use_rslora=self.config.use_rslora)
+                    print(f"State dict keys: {list(child.state_dict().keys())}")
+                    new_layer._load_pretrained_weights(child.state_dict())
+                    setattr(module, name, new_layer)
 
             if ((len(list(child.children()))) > 0) and not self._exclude_module_name_check(name):
                 self._apply_lora(child)
@@ -141,7 +157,7 @@ class LoRAModel(nn.Module):
 
     def merge_weights(self, module):
         for name, child in module.named_children():
-            if isinstance(child, (LoRALinear, LoRAEmbedding, LoRAConv2D, LoRAConv1d)):
+            if isinstance(child, (LoRALinear, LoRAEmbedding, LoRAConv2D, LoRAConv1d, LoRALSTM)):
                 merged_layer = child.merge_weights()
                 setattr(module, name, merged_layer)
 
@@ -164,21 +180,21 @@ class LoRAModel(nn.Module):
         return self.lora_model(*inputs, **kwargs)
 
 if __name__ == "__main__":
-    from transformers import AutoModelForSequenceClassification
-    from transformers import Wav2Vec2Processor, Wav2Vec2ConformerForCTC
+    from transformers import AutoModelForSequenceClassification, AutoModelForCausalLM
 
-    target_modules = ["linear_q", "linear_k", "linear_v", "linear_out", "conv","word_embeddings"]
-    exclude_modules = ["classifier"]
+    # target_modules = ["linear_q", "linear_k", "linear_v", "linear_out", "conv","word_embeddings"]
+    target_modules = ["embed_tokens", "conv", "in_proj", "out_proj", "w1", "w2", "w3", "q_proj", "k_proj", "v_proj", "out_proj"]
+    exclude_modules = ["lm_head"]
 
     config = LoraConfig(target_modules=target_modules, exclude_modules=exclude_modules, bias="lora_only")
-    model = AutoModelForSequenceClassification.from_pretrained("FacebookAI/roberta-base")
-    # model = Wav2Vec2ConformerForCTC.from_pretrained("facebook/wav2vec2-conformer-rope-large-960h-ft")
+    # model = AutoModelForSequenceClassification.from_pretrained("Barleysack/klue-roberta-LSTM")
+    model = AutoModelForCausalLM.from_pretrained("LiquidAI/LFM2-350M")
     print(model)
 
     lora_model = LoRAModel(model, config)
-    # for name, param in lora_model.named_parameters():
-    #     print(name, param.requires_grad)
+    # # for name, param in lora_model.named_parameters():
+    # #     print(name, param.requires_grad)
     print(lora_model)
-    lora_model.save_model("path", merge_weights=True)
+    # lora_model.save_model("path", merge_weights=True)
 
 

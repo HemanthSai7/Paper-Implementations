@@ -11,7 +11,8 @@ __all__ = [
     "LoRALinear",
     "LoRAEmbedding",
     "LoRAConv2D",
-    "LoRAConv1d"
+    "LoRAConv1d",
+    "LoRALSTM",
 ]
 
 
@@ -360,10 +361,143 @@ class LoRAConv1d(nn.Conv1d, LoRALayerBase):
         merged_conv.load_state_dict(state_dict)
         return merged_conv
 
+
+class LoRALSTM(nn.LSTM, LoRALayerBase):
+    def __init__(
+        self,
+        input_size: int,
+        hidden_size: int,
+        num_layers: int = 1,
+        bias: bool = True,
+        batch_first: bool = False,
+        dropout: float = 0.0,
+        bidirectional: bool = False,
+        rank: int = 8,
+        lora_alpha: int = 8,
+        lora_dropout: float = 0.0,
+        use_rslora: bool = False,
+        apply_to: str = "ih",
+        **kwargs,
+    ):
+        nn.LSTM.__init__(
+            self,
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            bias=bias,
+            batch_first=batch_first,
+            dropout=dropout,
+            bidirectional=bidirectional,
+            **kwargs
+        )
+        LoRALayerBase.__init__(
+            self,
+            rank=rank,
+            lora_alpha=lora_alpha,
+            lora_dropout=lora_dropout,
+            use_rslora=use_rslora,
+        )
+        self.apply_to = apply_to
+
+        for name, param in self.named_parameters():
+            if "weight_ih" in name or "weight_hh" in name:
+                param.requires_grad = False
+
+        self.num_directions = 2 if bidirectional else 1
+        for layer in range(num_layers * self.num_directions):
+            if "ih" in apply_to:
+                self.register_parameter(
+                    f"lora_A_ih_l{layer}", nn.Parameter(torch.zeros(rank, input_size))
+                )
+                self.register_parameter(
+                    f"lora_B_ih_l{layer}", nn.Parameter(torch.zeros(4 * hidden_size, rank))
+                )
+                nn.init.kaiming_uniform_(getattr(self, f"lora_A_ih_l{layer}"), a=math.sqrt(5))
+            if "hh" in apply_to:
+                self.register_parameter(
+                    f"lora_A_hh_l{layer}", nn.Parameter(torch.zeros(rank, hidden_size))
+                )
+                self.register_parameter(
+                    f"lora_B_hh_l{layer}", nn.Parameter(torch.zeros(4 * hidden_size, rank))
+                )
+                nn.init.kaiming_uniform_(getattr(self, f"lora_A_hh_l{layer}"), a=math.sqrt(5))
+
+    def _apply_lora_to_weights(self):
+        for layer in range(self.num_layers * self.num_directions):
+            if "ih" in self.apply_to:
+                lora_A = getattr(self, f"lora_A_ih_l{layer}")
+                lora_B = getattr(self, f"lora_B_ih_l{layer}")
+                base_weights = getattr(self, f"weight_ih_l{layer}")
+                delta = (lora_B @ lora_A) * self.scaling
+                merged = base_weights + delta
+                setattr(self, f"_merged_weight_ih_l{layer}", merged)
+
+            if "hh" in self.apply_to:
+                lora_A = getattr(self, f"lora_A_hh_l{layer}")
+                lora_B = getattr(self, f"lora_B_hh_l{layer}")
+                base_weight = getattr(self, f"weight_hh_l{layer}")
+                delta = (lora_B @ lora_A) * self.scaling
+                merged = base_weight + delta
+                setattr(self, f"_merged_weight_hh_l{layer}", merged)
+
+    def forward(self, x: torch.Tensor, hx=None):
+        self._apply_lora_to_weights()
+
+        backup = {}
+        for name, param in self.named_parameters():
+            if "weight_ih" in name or "weight_hh" in name:
+                backup[name] = param.data.clone()
+        for layer in range(self.num_layers * self.num_directions):
+            if hasattr(self, f"_merged_weight_ih_l{layer}"):
+                setattr(self, f"weight_ih_l{layer}", nn.Parameter(getattr(self, f"_merged_weight_ih_l{layer}")))
+            if hasattr(self, f"_merged_weight_hh_l{layer}"):
+                setattr(self, f"weight_hh_l{layer}", nn.Parameter(getattr(self, f"_merged_weight_hh_l{layer}")))
+
+        out = super().forward(x, hx)
+
+        for name, data in backup.items():
+            getattr(self, name).data = data
+
+        return out
+
+    def merge_weights(self):
+        merged_lstm = nn.LSTM(
+            input_size=self.input_size,
+            hidden_size=self.hidden_size,
+            num_layers=self.num_layers,
+            bias=self.bias,
+            batch_first=self.batch_first,
+            dropout=self.dropout,
+            bidirectional=self.bidirectional,
+        )
+        merged_sd = self.state_dict()
+        for layer in range(self.num_layers * self.num_directions):
+            if "ih" in self.apply_to:
+                A = getattr(self, f"lora_A_ih_l{layer}")
+                B = getattr(self, f"lora_B_ih_l{layer}")
+                merged_sd[f"weight_ih_l{layer}"] = (
+                    getattr(self, f"weight_ih_l{layer}").data + (B @ A) * self.scaling
+                )
+            if "hh" in self.apply_to:
+                A = getattr(self, f"lora_A_hh_l{layer}")
+                B = getattr(self, f"lora_B_hh_l{layer}")
+                merged_sd[f"weight_hh_l{layer}"] = (
+                    getattr(self, f"weight_hh_l{layer}").data + (B @ A) * self.scaling
+                )
+        merged_lstm.load_state_dict(merged_sd)
+        return merged_lstm
+
+
     
-# if __name__ == "__main__":
-#     x = torch.randn(2, 256, 32, 32)  # (batch, channels, height, width)
-#     lora_conv2d = LoRAConv2D(256, 100,3, rank=8)
+if __name__ == "__main__":
+    # x = torch.randn(2, 256, 32, 32)  # (batch, channels, height, width)
+    # lora_conv2d = LoRAConv2D(256, 100,3, rank=8)
     
-#     output = lora_conv2d(x)  # This calls forward() and triggers the prints
-#     # print(f"Output shape: {output.shape}")
+    # output = lora_conv2d(x)  # This calls forward() and triggers the prints
+    # # print(f"Output shape: {output.shape}")
+
+    x = torch.randn(5, 10, 64)  # (batch, seq_len, input_size)
+    lora_lstm = LoRALSTM(input_size=64, hidden_size=128, rank=8, lora_alpha=8, batch_first=True)
+    print(lora_lstm)
+    out, _ = lora_lstm(x)
+    print(out.shape)  # [5, 10, 128]
